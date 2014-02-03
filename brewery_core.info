@@ -1,0 +1,5 @@
+name = Brewery Core
+description = Core functionality for brewery.seifts.us.
+package = Brewery
+core = 7.x
+version = 7.x-1.x
