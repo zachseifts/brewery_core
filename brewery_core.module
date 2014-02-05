@@ -20,6 +20,7 @@ function brewery_core_menu() {
   $items['logger/%'] = array(
     'title' => t('Logs by key'),
     'page callback' => 'brewery_core_logger_key',
+    'page arguments' => array(1),
     'access arguments' => array('access content'),
     'type' => MENU_CALLBACK,
   );
@@ -31,6 +32,8 @@ function brewery_core_menu() {
  * Displays a page of all logs in the past hour.
  */
 function brewery_core_logger_all() {
+
+  drupal_set_title('Last 60 minutes');
 
   $query = new EntityFieldQuery();
   $query->entityCondition('entity_type', 'node')
@@ -54,17 +57,59 @@ function brewery_core_logger_all() {
 
     $rows[] = array(
       format_date($reading->created, 'custom', 'l, d/m/Y h:i a'),
-      $reading->title,
+      l($reading->title, 'logger/' . $reading->title),
       render($value),
       render($category),
     );
   }
 
-  $header = array('Timestamp', 'Key', 'Value', 'Category');
+  $header = array('Timestamp', 'Sensor', 'Value', 'Category');
   return array(
     '#theme' => 'table',
     '#header' => $header,
     '#rows' => $rows
   );
-
 }
+
+/**
+ * Displays a page of all logs for a given key.
+ */
+function brewery_core_logger_key($key = NULL) {
+  drupal_set_title('Logs for sensor ' . $key);
+
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'node')
+    ->entityCondition('bundle', 'reading')
+    ->propertyCondition('status', 1)
+    ->propertyCondition('title', $key)
+    ->propertyOrderBy('created', 'DESC')
+    ->range(0, 60);
+
+  $result = $query->execute();
+  $reading_nids = array_keys($result['node']);
+
+  $readings = node_load_multiple($reading_nids);
+
+  $rows = array();
+  foreach ($readings as $reading) {
+    $value_field = field_get_items('node', $reading, 'field_reading_value');
+    $value = field_view_value('node', $reading, 'field_reading_value', $value_field[0]);
+
+    $category_field = field_get_items('node', $reading, 'field_reading_category');
+    $category = field_view_value('node', $reading, 'field_reading_category', $category_field[0]);
+
+    $rows[] = array(
+      format_date($reading->created, 'custom', 'l, d/m/Y h:i a'),
+      render($value),
+      render($category),
+    );
+  }
+
+  $header = array('Timestamp', 'Value', 'Category');
+  return array(
+    '#theme' => 'table',
+    '#header' => $header,
+    '#rows' => $rows
+  );
+}
+
