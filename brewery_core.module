@@ -39,6 +39,10 @@ function brewery_core_block_info() {
     'info' => t('All Sensors'),
   );
 
+  $blocks['brew-system-status'] = array(
+    'info' => t('Beer Status'),
+  );
+
   return $blocks;
 }
 
@@ -53,6 +57,10 @@ function brewery_core_block_view($delta = '') {
       $block['title'] = t('All Sensors');
       $block['content'] = brewery_core_all_sensors_block();
       break;
+    case 'brew-system-status':
+      $block['title'] = t('Beer Status');
+      $block['content'] = brewery_core_brew_system_status_block();
+      break;
   }
 
   return $block;
@@ -63,6 +71,7 @@ function brewery_core_all_sensors_block() {
 
   $query = db_select('node', 'n')
     ->fields('n', array('title'))
+    ->condition('n.type', 'reading')
     ->condition('n.status', 1)
     ->distinct();
   $result = $query->execute();
@@ -90,6 +99,40 @@ function brewery_core_all_sensors_block() {
   );
 
   return $block;
+}
+
+/**
+ * Displays a block that has info about the currently active beer.
+ *
+ * Should look and see if there is a beer that's activitly fermentating
+ * and display infromation about related content. Such as temperature
+ * readings and if a relay is active.
+ */
+function brewery_core_brew_system_status_block() {
+  return array(
+    '#theme' => 'table',
+    '#rows' => array(
+      array(
+        'data' => array('Brewing', l('India Pale Ale', '<front>'))
+      ),
+      array(
+        'data' => array('Current Temp', 65.5),
+        'class' => array('success')
+      ),
+      array(
+        'data' => array('Relay 1', 'On'),
+        'class' => array('success')
+      ),
+      array(
+        'data' => array('Relay 2', 'Off'),
+        'class' => array('warning')
+      ),
+      array(
+        'data' => array('Relay 3', 'On'),
+        'class' => array('success')
+      ),
+    )
+  );
 }
 
 /**
