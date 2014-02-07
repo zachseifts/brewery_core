@@ -34,7 +34,6 @@ function brewery_core_menu() {
 function brewery_core_block_info() {
   $blocks = array();
 
-
   $blocks['all-sensors'] = array(
     'info' => t('All Sensors'),
   );
@@ -109,30 +108,61 @@ function brewery_core_all_sensors_block() {
  * readings and if a relay is active.
  */
 function brewery_core_brew_system_status_block() {
-  return array(
-    '#theme' => 'table',
-    '#rows' => array(
-      array(
-        'data' => array('Brewing', l('India Pale Ale', '<front>'))
-      ),
-      array(
-        'data' => array('Current Temp', 65.5),
-        'class' => array('success')
-      ),
-      array(
-        'data' => array('Relay 1', 'On'),
-        'class' => array('success')
-      ),
-      array(
-        'data' => array('Relay 2', 'Off'),
-        'class' => array('warning')
-      ),
-      array(
-        'data' => array('Relay 3', 'On'),
-        'class' => array('success')
-      ),
-    )
-  );
+
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'node')
+    ->entityCondition('bundle', 'beer')
+    ->fieldCondition('field_beer_active', 'value', 1, '=')
+    ->propertyCondition('status', 1)
+    ->propertyOrderBy('created', 'DESC');
+
+  $result = $query->execute();
+  $beers_nids = array_keys($result['node']);
+  $beers = node_load_multiple($beers_nids);
+
+  $dom = array();
+  foreach ($beers as $beer) {
+    $fermentation_temp = field_get_items('node', $beer, 'field_beer_fermentation_temp');
+    $fermentation_temp_value = field_view_value('node', $beer, 'field_beer_fermentation_temp', $fermentation_temp[0]);
+
+    $dom[] = array(
+      '#theme' => 'table',
+      '#rows' => array(
+        array(
+          'data' => array(t('Brewing'), l($beer->title, 'node/' . $beer->nid))
+        ),
+        array(
+          'data' => array(t('Fermentation Temp'), render($fermentation_temp_value))
+        ),
+      )
+    );
+  }
+
+  return $dom;
+//return array(
+//  '#theme' => 'table',
+//  '#rows' => array(
+//    array(
+//      'data' => array('Brewing', l('India Pale Ale', '<front>'))
+//    ),
+//    array(
+//      'data' => array('Current Temp', 65.5),
+//      'class' => array('success')
+//    ),
+//    array(
+//      'data' => array('Relay 1', 'On'),
+//      'class' => array('success')
+//    ),
+//    array(
+//      'data' => array('Relay 2', 'Off'),
+//      'class' => array('warning')
+//    ),
+//    array(
+//      'data' => array('Relay 3', 'On'),
+//      'class' => array('success')
+//    ),
+//  )
+//);
 }
 
 /**
