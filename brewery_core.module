@@ -10,6 +10,13 @@
 function brewery_core_menu() {
   $items = array();
 
+  $items['beers'] = array(
+    'title' => t('Beers'),
+    'page callback' => 'brewery_core_beers',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+
   $items['logger/all'] = array(
     'title' => t('Last 60 minutes'),
     'page callback' => 'brewery_core_logger_all',
@@ -20,6 +27,14 @@ function brewery_core_menu() {
   $items['logger/%'] = array(
     'title' => t('Logs by key'),
     'page callback' => 'brewery_core_logger_key',
+    'page arguments' => array(1),
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['beer/%'] = array(
+    'title' => t('Beer'),
+    'page callback' => 'brewery_core_beer',
     'page arguments' => array(1),
     'access arguments' => array('access content'),
     'type' => MENU_CALLBACK,
@@ -39,7 +54,7 @@ function brewery_core_block_info() {
   );
 
   $blocks['brew-system-status'] = array(
-    'info' => t('Beer Status'),
+    'info' => t('Active Beer Status'),
   );
 
   return $blocks;
@@ -57,7 +72,7 @@ function brewery_core_block_view($delta = '') {
       $block['content'] = brewery_core_all_sensors_block();
       break;
     case 'brew-system-status':
-      $block['title'] = t('Beer Status');
+      $block['title'] = t('Active Beer Status');
       $block['content'] = brewery_core_brew_system_status_block();
       break;
   }
@@ -129,7 +144,7 @@ function brewery_core_brew_system_status_block() {
       '#theme' => 'table',
       '#rows' => array(
         array(
-          'data' => array(t('Brewing'), l($beer->title, 'node/' . $beer->nid))
+          'data' => array(t('Brewing'), l($beer->title, 'beer/' . $beer->nid))
         ),
         array(
           'data' => array(t('Fermentation Temp'), render($fermentation_temp_value))
@@ -192,15 +207,20 @@ function brewery_core_logger_all() {
     $category_field = field_get_items('node', $reading, 'field_reading_category');
     $category = field_view_value('node', $reading, 'field_reading_category', $category_field[0]);
 
+    $beer_field = field_get_items('node', $reading, 'field_reading_beer');
+    $beer_nid = $beer_field[0]['target_id'];
+    $beer = field_view_value('node', $reading, 'field_reading_beer', $beer_field[0]);
+
     $rows[] = array(
       l($reading->title, 'logger/' . $reading->title),
+      l(render($beer), 'beer/' . $beer_nid),
       format_date($reading->created, 'custom', 'd/m/Y h:i a'),
       render($value),
       render($category),
     );
   }
 
-  $header = array('Sensor', 'Timestamp', 'Value', 'Category');
+  $header = array('Sensor', 'Beer', 'Timestamp', 'Value', 'Category');
   return array(
     '#theme' => 'table',
     '#header' => $header,
@@ -248,6 +268,170 @@ function brewery_core_logger_key($key = NULL) {
     '#theme' => 'table',
     '#header' => $header,
     '#rows' => $rows
+  );
+}
+
+/**
+ * Displays a page for a beer's readings.
+ */
+function brewery_core_beer($nid = NULL) {
+
+  $dom = array();
+
+  $beer = node_load($nid);
+  drupal_set_title($beer->title);
+
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'node')
+    ->entityCondition('bundle', 'reading')
+    ->propertyCondition('status', 1)
+    ->fieldCondition('field_reading_beer', 'target_id', $nid, '=')
+    ->propertyOrderBy('created', 'DESC')
+    ->range(0, 60);
+
+  $result = $query->execute();
+  $reading_nids = array_keys($result['node']);
+
+  $readings = node_load_multiple($reading_nids);
+
+  if (empty($readings)) {
+    return array(
+      '#type' => 'markup',
+      '#markup' => 'We\'re sorry but there are no records for this beer.',
+      '#prefix' => '<p>',
+      '#suffix' => '</p>'
+    );
+  }
+
+  // Get teh current temperature of the reading.
+  $current_temp_node = array_values($readings)[0];
+  $current_temp_field = field_get_items('node', $current_temp_node, 'field_reading_value');
+  $current_temp = field_view_value('node', $current_temp_node, 'field_reading_value', $current_temp_field[0]);
+
+  // Are we heating or cooling?
+  $fermentation_temp = field_get_items('node', $beer, 'field_beer_fermentation_temp');
+  $temp = $fermentation_temp[0]['value'];
+  $current = $current_temp_field[0]['value'];
+
+  $state = array(
+    '#type' => 'markup',
+    '#suffix' => '</span>',
+  );
+
+  if ((int) $current >= (int) $temp) {
+    $state['#prefix'] = '<span class="label label-primary">';
+    $state['#markup'] = 'Cooling';
+  }
+  else {
+    $state['#prefix'] = '<span class="label label-danger">';
+    $state['#markup'] = 'Heating';
+  }
+
+  $dom[] = array(
+    '#type' => 'markup',
+    '#markup' => render($current_temp) . ' ' . render($state),
+    '#prefix' => '<p>',
+    '#suffix' => '</p>',
+  );
+
+  $rows = array();
+  foreach ($readings as $reading) {
+    $value_field = field_get_items('node', $reading, 'field_reading_value');
+    $value = field_view_value('node', $reading, 'field_reading_value', $value_field[0]);
+
+    $category_field = field_get_items('node', $reading, 'field_reading_category');
+    $category = field_view_value('node', $reading, 'field_reading_category', $category_field[0]);
+
+    $rows[] = array(
+      l($reading->title, 'logger/' . $reading->title),
+      format_date($reading->created, 'custom', 'd/m/Y h:i a'),
+      render($value),
+      render($category),
+    );
+  }
+
+  $header = array('Sensor', 'Timestamp', 'Value', 'Category');
+  $dom[] =  array(
+    '#theme' => 'table',
+    '#header' => $header,
+    '#rows' => $rows,
+    '#attributes' => array('class' => 'table table-hover'),
+  );
+
+  return $dom;
+}
+
+/**
+ * A page callback that lists all beers and their statuses.
+ */
+function brewery_core_beers() {
+
+  drupal_set_title(t('Beers'));
+
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'node')
+    ->entityCondition('bundle', 'beer')
+    ->propertyCondition('status', 1)
+    ->propertyOrderBy('created', 'DESC');
+
+  $result = $query->execute();
+  $beer_nids = array_keys($result['node']);
+
+  $beers = node_load_multiple($beer_nids);
+
+  $rows = array();
+  foreach ($beers as $beer) {
+    $active = field_get_items('node', $beer, 'field_beer_active');
+
+    // Create a label and classes for each beer in the list
+    $beer_label = array(
+      '#type' => 'markup',
+      '#suffix' => '</span>'
+    );
+    $beer_class = array();
+
+    if ($active[0]['value'] == 1) {
+      $beer_class[] = 'success';
+      $beer_label['#markup'] = 'Active';
+      $beer_label['#prefix'] = '<span class="btn btn-large btn-success disabled pull-right">';
+    }
+    else {
+      $beer_label['#markup'] = 'Inactive';
+      $beer_label['#prefix'] = '<span class="btn btn-large btn-default disabled pull-right">';
+    }
+
+    $beer_link = array(
+      '#type' => 'markup',
+      '#markup' => $beer->title,
+      '#prefix' => '<h4>',
+      '#suffix' => '</h4>'
+    );
+
+    $beer_view_link = array(
+      '#type' => 'markup',
+      '#markup' => l('View', 'beer/' . $beer->nid, array('attributes' => array('class' => 'btn btn-default btn-large pull-right'))),
+    );
+
+    $beer_edit_link = array(
+      '#type' => 'markup',
+      '#markup' => l('Edit', 'node/' . $beer->nid . '/edit', array('attributes' => array('class' => 'btn btn-default btn-large pull-right'))),
+    );
+
+    $rows[] = array(
+      'data' => array(
+        render($beer_link),
+        render($beer_view_link),
+        render($beer_edit_link),
+        render($beer_label)
+      ),
+      'class' => $beer_class
+    );
+  }
+
+  return array(
+    '#theme' => 'table',
+    '#rows' => $rows,
+    '#attributes' => array('class' => 'table-no-striping'),
   );
 }
 
